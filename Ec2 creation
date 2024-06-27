@@ -1,0 +1,56 @@
+provider "aws" {
+    region     = "us-west-1"
+    access_key = "access_key"
+    secret_key = "paste_secret_key"
+}
+
+resource "tls_private_key" "rsakey" {
+    algorithm = "RSA"
+    rsa_bits  = 4096
+}
+
+resource "aws_key_pair" "keypair" {
+    key_name   = "keypair"
+    public_key = tls_private_key.rsakey.public_key_openssh
+}
+
+resource "local_file" "privatekey" {
+    content  = tls_private_key.rsakey.private_key_pem
+    filename = "keypair.pem"
+}
+
+resource "aws_security_group" "allow_ssh" {
+    name        = "allow_ssh"
+    description = "Allow SSH inbound traffic"
+
+    ingress {
+        from_port   = 0
+        to_port     = 65535
+        protocol    = "tcp"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+
+    egress {
+        from_port   = 0
+        to_port     = 0
+        protocol    = "-1"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+}
+
+resource "aws_instance" "app" {
+    ami           = "ami-08012c0a9ee8e21c4"
+    instance_type = "t2.medium"
+    count         = 1
+    key_name      = aws_key_pair.keypair.key_name
+
+    vpc_security_group_ids = [aws_security_group.allow_ssh.id]
+
+    tags = {
+        Name = "App Server Instance"
+    }
+}
+
+output "instance_ip_addr" {
+    value = aws_instance.app[*].public_ip
+}
